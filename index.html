@@ -164,7 +164,11 @@ function renderSongs(){
         </div>
       </div>
       <div class="song-body" id="body-${s.id}">
-        <div class="chord-chart">${esc(s.content)}</div>
+        <div class="chord-chart" id="chart-${s.id}">${esc(s.content)}</div>
+        <div class="row" style="margin-top:8px;justify-content:flex-end;flex-wrap:wrap;gap:6px">
+          <button class="secondary" onclick="event.stopPropagation();fetchChordsForSong('${s.id}','${esc(s.title).replace(/'/g,"\\'")}','${esc(s.artist||'').replace(/'/g,"\\'")}')" id="fetchsong-${s.id}" style="padding:6px 12px;font-size:.9rem">🔍 Fetch Chords</button>
+          <button class="secondary" onclick="event.stopPropagation();editSong('${s.id}')" style="padding:6px 12px;font-size:.9rem">✏️ Edit</button>
+        </div>
       </div>
     </div>`).join('');
 }
@@ -233,6 +237,57 @@ async function fetchChords(){
     }
   }catch(e){status.textContent='❌ Fetch failed';}
   btn.disabled=false;btn.textContent='🔍 Fetch Chords';
+}
+
+async function fetchChordsForSong(id,title,artist){
+  const btn=document.getElementById('fetchsong-'+id);
+  btn.disabled=true;btn.textContent='⏳ Fetching...';
+  try{
+    const r=await fetch(SUPABASE_URL+'/functions/v1/fetch-chords',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({title,artist})
+    });
+    const data=await r.json();
+    if(data.content){
+      await api('songs?id=eq.'+id,{method:'PATCH',body:JSON.stringify({content:data.content})});
+      await loadSongs();
+      toast('Chords fetched!');
+      // Re-open the song body
+      const body=document.getElementById('body-'+id);
+      if(body)body.classList.add('open');
+    }else{
+      toast('Could not find chords');
+    }
+  }catch(e){toast('Fetch failed');}
+  btn.disabled=false;btn.textContent='🔍 Fetch Chords';
+}
+
+function editSong(id){
+  const song=songs.find(s=>s.id===id);
+  if(!song)return;
+  const chart=document.getElementById('chart-'+id);
+  // Replace chord chart with a textarea for editing
+  const parent=chart.parentElement;
+  const existing=parent.querySelector('.edit-area');
+  if(existing){existing.remove();chart.style.display='';return;}// toggle off
+  chart.style.display='none';
+  const wrap=document.createElement('div');wrap.className='edit-area';
+  wrap.innerHTML=`<textarea style="font-family:'Courier New',monospace;font-size:1rem;min-height:200px;white-space:pre;width:100%;padding:12px;border-radius:8px;border:1px solid #333;background:var(--bg);color:var(--text);tab-size:4">${esc(song.content)}</textarea>
+    <div class="row" style="margin-top:8px;justify-content:flex-end"><button onclick="saveEdit('${id}')" style="padding:8px 16px;font-size:.95rem">💾 Save</button></div>`;
+  chart.insertAdjacentElement('afterend',wrap);
+}
+
+async function saveEdit(id){
+  const song=songs.find(s=>s.id===id);
+  if(!song)return;
+  const ta=document.querySelector('#body-'+id+' .edit-area textarea');
+  if(!ta)return;
+  const content=ta.value;
+  await api('songs?id=eq.'+id,{method:'PATCH',body:JSON.stringify({content})});
+  await loadSongs();
+  toast('Song updated!');
+  const body=document.getElementById('body-'+id);
+  if(body)body.classList.add('open');
 }
 
 function setupRealtime(){
