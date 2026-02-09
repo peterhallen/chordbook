@@ -85,6 +85,10 @@ label{color:var(--muted);font-size:.9rem;margin-top:8px;display:block}
     <label>Your Name</label>
     <input id="songAddedBy" placeholder="Display name" />
     <label>Chord Chart</label>
+    <div class="row">
+      <button class="secondary" onclick="fetchChords()" id="fetchBtn" style="padding:8px 14px;font-size:.95rem">🔍 Fetch Chords</button>
+      <span id="fetchStatus" style="color:var(--muted);font-size:.85rem"></span>
+    </div>
     <textarea id="songContent" placeholder="    G        C       D
 Amazing grace how sweet the sound
    G          C      G
@@ -207,6 +211,29 @@ function toast(msg){
 }
 
 function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):'';}
+
+async function fetchChords(){
+  const title=document.getElementById('songTitle').value.trim();
+  const artist=document.getElementById('songArtist').value.trim();
+  if(!title)return alert('Enter a song title first');
+  const btn=document.getElementById('fetchBtn');
+  const status=document.getElementById('fetchStatus');
+  btn.disabled=true;btn.textContent='⏳ Fetching...';status.textContent='';
+  try{
+    const r=await fetch(SUPABASE_URL+'/functions/v1/fetch-chords',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({title,artist})
+    });
+    const data=await r.json();
+    if(data.content){
+      document.getElementById('songContent').value=data.content;
+      status.textContent='✅ Found! Edit if needed.';
+    }else{
+      status.textContent='❌ '+(data.error||'Not found');
+    }
+  }catch(e){status.textContent='❌ Fetch failed';}
+  btn.disabled=false;btn.textContent='🔍 Fetch Chords';
+}
 
 function setupRealtime(){
   if(realtimeWs)realtimeWs.close();
