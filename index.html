@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<title>ChordBook</title>
+<style>
+:root{--bg:#1a1a2e;--surface:#16213e;--card:#0f3460;--accent:#e94560;--text:#eee;--muted:#999;--green:#4ecca3}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:16px;max-width:700px;margin:0 auto}
+h1{text-align:center;font-size:2rem;margin:20px 0;color:var(--accent)}
+h2{font-size:1.4rem;margin:12px 0}
+button{background:var(--accent);color:#fff;border:none;padding:12px 24px;border-radius:8px;font-size:1.1rem;cursor:pointer;touch-action:manipulation}
+button:active{opacity:.8}
+button.secondary{background:var(--card)}
+input,textarea{width:100%;padding:12px;border-radius:8px;border:1px solid #333;background:var(--surface);color:var(--text);font-size:1.1rem;margin:6px 0}
+textarea{font-family:'Courier New',monospace;font-size:1rem;min-height:200px;white-space:pre;tab-size:4}
+.landing{text-align:center;padding-top:15vh}
+.landing p{color:var(--muted);margin:8px 0 24px}
+.landing input{max-width:300px;display:inline-block;text-align:center}
+.row{display:flex;gap:8px;margin:8px 0;align-items:center}
+.song-card{background:var(--surface);border-radius:12px;margin:8px 0;overflow:hidden;border:1px solid #222}
+.song-header{padding:14px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.song-header h3{font-size:1.2rem}
+.song-header small{color:var(--muted);font-size:.85rem}
+.song-body{padding:0 16px 16px;display:none}
+.song-body.open{display:block}
+.chord-chart{font-family:'Courier New',monospace;font-size:1.15rem;line-height:1.6;white-space:pre-wrap;word-break:break-word;background:var(--bg);padding:12px;border-radius:8px;overflow-x:auto}
+.toolbar{display:flex;justify-content:space-between;align-items:center;margin:8px 0;flex-wrap:wrap;gap:8px}
+.badge{background:var(--green);color:#000;padding:2px 8px;border-radius:12px;font-size:.8rem}
+.modal-bg{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:10;padding:16px}
+.modal{background:var(--surface);padding:24px;border-radius:16px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto}
+.modal h2{margin-bottom:12px}
+label{color:var(--muted);font-size:.9rem;margin-top:8px;display:block}
+.hidden{display:none!important}
+.delete-btn{background:none;border:none;color:var(--muted);font-size:1.2rem;padding:4px 8px;cursor:pointer}
+.delete-btn:hover{color:var(--accent)}
+.empty{text-align:center;color:var(--muted);padding:40px 0}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--green);color:#000;padding:10px 20px;border-radius:8px;font-weight:600;z-index:99;animation:fadeout 2s forwards}
+@keyframes fadeout{0%,70%{opacity:1}100%{opacity:0}}
+</style>
+</head>
+<body>
+
+<!-- Landing -->
+<div id="landing" class="landing">
+  <h1>🎸 ChordBook</h1>
+  <p>Shared setlists for jamming together</p>
+  <div style="margin:20px 0">
+    <input id="newName" placeholder="Setlist name" />
+    <br><br>
+    <button onclick="createSetlist()">Create Setlist</button>
+  </div>
+  <p style="margin:30px 0 10px">— or join with a code —</p>
+  <div>
+    <input id="joinCode" placeholder="Share code" />
+    <br><br>
+    <button class="secondary" onclick="joinSetlist()">Join</button>
+  </div>
+</div>
+
+<!-- Setlist View -->
+<div id="setlistView" class="hidden">
+  <div class="toolbar">
+    <div>
+      <h2 id="setlistName"></h2>
+      <small id="songCount" style="color:var(--muted)"></small>
+    </div>
+    <div class="row">
+      <button class="secondary" onclick="shareLink()" style="padding:10px 14px">📋 Share</button>
+      <button onclick="showAddModal()" style="padding:10px 14px">＋ Add Song</button>
+    </div>
+  </div>
+  <div id="songList"></div>
+</div>
+
+<!-- Add Song Modal -->
+<div id="addModal" class="modal-bg hidden" onclick="if(event.target===this)hideAddModal()">
+  <div class="modal">
+    <h2>Add Song</h2>
+    <label>Title</label>
+    <input id="songTitle" placeholder="Song title" />
+    <label>Artist</label>
+    <input id="songArtist" placeholder="Artist (optional)" />
+    <label>Your Name</label>
+    <input id="songAddedBy" placeholder="Display name" />
+    <label>Chord Chart</label>
+    <textarea id="songContent" placeholder="    G        C       D
+Amazing grace how sweet the sound
+   G          C      G
+That saved a wretch like me"></textarea>
+    <div class="row" style="margin-top:12px;justify-content:flex-end">
+      <button class="secondary" onclick="hideAddModal()">Cancel</button>
+      <button onclick="addSong()">Add Song</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL='https://xjfzcvkytclidgdpwpiz.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqZnpjdmt5dGNsaWRnZHB3cGl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0MDA5NDIsImV4cCI6MjA4Mzk3Njk0Mn0.EAiXmiQMWDgRsOrSqa-MBSG1ahndD2Ltq0FEp-AjJIo';
+const headers={'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json','Prefer':'return=representation'};
+
+let currentSetlist=null;
+let songs=[];
+let realtimeWs=null;
+
+// Check URL for share code
+const params=new URLSearchParams(location.search);
+if(params.get('code')){document.getElementById('joinCode').value=params.get('code');joinSetlist();}
+
+async function api(path,opts={}){
+  const r=await fetch(SUPABASE_URL+'/rest/v1/'+path,{headers,...opts});
+  if(!r.ok)throw new Error(await r.text());
+  return r.status===204?null:r.json();
+}
+
+async function createSetlist(){
+  const name=document.getElementById('newName').value.trim();
+  if(!name)return alert('Enter a name');
+  const [sl]=await api('setlists',{method:'POST',body:JSON.stringify({name})});
+  currentSetlist=sl;
+  showSetlist();
+}
+
+async function joinSetlist(){
+  const code=document.getElementById('joinCode').value.trim();
+  if(!code)return alert('Enter a code');
+  const res=await api('setlists?share_code=eq.'+encodeURIComponent(code)+'&limit=1');
+  if(!res.length)return alert('Setlist not found');
+  currentSetlist=res[0];
+  showSetlist();
+}
+
+async function showSetlist(){
+  document.getElementById('landing').classList.add('hidden');
+  document.getElementById('setlistView').classList.remove('hidden');
+  document.getElementById('setlistName').textContent=currentSetlist.name;
+  history.replaceState(null,'','?code='+currentSetlist.share_code);
+  await loadSongs();
+  setupRealtime();
+}
+
+async function loadSongs(){
+  songs=await api('songs?setlist_id=eq.'+currentSetlist.id+'&order=position.asc,created_at.asc');
+  renderSongs();
+}
+
+function renderSongs(){
+  const el=document.getElementById('songList');
+  document.getElementById('songCount').textContent=songs.length+' song'+(songs.length!==1?'s':'');
+  if(!songs.length){el.innerHTML='<div class="empty">No songs yet. Tap + Add Song to get started!</div>';return;}
+  el.innerHTML=songs.map((s,i)=>`
+    <div class="song-card" id="song-${s.id}">
+      <div class="song-header" onclick="toggle('${s.id}')">
+        <div><h3>${esc(s.title)}</h3>${s.artist?'<small>'+esc(s.artist)+'</small>':''}</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${s.added_by?'<span class="badge">'+esc(s.added_by)+'</span>':''}
+          <button class="delete-btn" onclick="event.stopPropagation();deleteSong('${s.id}')" title="Remove">✕</button>
+        </div>
+      </div>
+      <div class="song-body" id="body-${s.id}">
+        <div class="chord-chart">${esc(s.content)}</div>
+      </div>
+    </div>`).join('');
+}
+
+function toggle(id){document.getElementById('body-'+id).classList.toggle('open')}
+
+function showAddModal(){
+  document.getElementById('addModal').classList.remove('hidden');
+  const saved=localStorage.getItem('cb_name');
+  if(saved)document.getElementById('songAddedBy').value=saved;
+}
+function hideAddModal(){document.getElementById('addModal').classList.add('hidden')}
+
+async function addSong(){
+  const title=document.getElementById('songTitle').value.trim();
+  const artist=document.getElementById('songArtist').value.trim();
+  const content=document.getElementById('songContent').value;
+  const added_by=document.getElementById('songAddedBy').value.trim()||'Anonymous';
+  if(!title)return alert('Enter a title');
+  localStorage.setItem('cb_name',added_by);
+  const pos=songs.length;
+  await api('songs',{method:'POST',body:JSON.stringify({setlist_id:currentSetlist.id,title,artist,content,added_by,position:pos})});
+  document.getElementById('songTitle').value='';
+  document.getElementById('songArtist').value='';
+  document.getElementById('songContent').value='';
+  hideAddModal();
+  await loadSongs();
+}
+
+async function deleteSong(id){
+  if(!confirm('Remove this song?'))return;
+  await api('songs?id=eq.'+id,{method:'DELETE'});
+  await loadSongs();
+}
+
+function shareLink(){
+  const url=location.origin+location.pathname+'?code='+currentSetlist.share_code;
+  navigator.clipboard.writeText(url).then(()=>toast('Link copied!')).catch(()=>{prompt('Copy this link:',url)});
+}
+
+function toast(msg){
+  const t=document.createElement('div');t.className='toast';t.textContent=msg;
+  document.body.appendChild(t);setTimeout(()=>t.remove(),2200);
+}
+
+function esc(s){return s?s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):'';}
+
+function setupRealtime(){
+  if(realtimeWs)realtimeWs.close();
+  const wsUrl=SUPABASE_URL.replace('https','wss')+'/realtime/v1/websocket?apikey='+SUPABASE_KEY+'&vsn=1.0.0';
+  const ws=new WebSocket(wsUrl);
+  realtimeWs=ws;
+  ws.onopen=()=>{
+    ws.send(JSON.stringify({topic:'realtime:public:songs:setlist_id=eq.'+currentSetlist.id,event:'phx_join',payload:{config:{broadcast:{self:false},postgres_changes:[{event:'*',schema:'public',table:'songs',filter:'setlist_id=eq.'+currentSetlist.id}]}},ref:'1'}));
+    setInterval(()=>{if(ws.readyState===1)ws.send(JSON.stringify({topic:'phoenix',event:'heartbeat',payload:{},ref:'hb'}))},30000);
+  };
+  ws.onmessage=(e)=>{
+    const msg=JSON.parse(e.data);
+    if(msg.event==='postgres_changes')loadSongs();
+  };
+  ws.onclose=()=>{if(currentSetlist)setTimeout(setupRealtime,2000)};
+}
+</script>
+</body>
+</html>
