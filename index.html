@@ -46,10 +46,11 @@ label{color:var(--muted);font-size:.9rem;margin-top:8px;display:block}
 <div id="landing" class="landing">
   <h1>🎸 ChordBook</h1>
   <p>Shared setlists for jamming together</p>
+  <div id="existingSetlists" style="margin:20px 0;text-align:left"></div>
   <div style="margin:20px 0">
-    <input id="newName" placeholder="Setlist name" />
+    <input id="newName" placeholder="New setlist name" />
     <br><br>
-    <button onclick="createSetlist()">Create Setlist</button>
+    <button onclick="createSetlist()">＋ Create New Setlist</button>
   </div>
   <p style="margin:30px 0 10px">— or join with a code —</p>
   <div>
@@ -112,6 +113,22 @@ let realtimeWs=null;
 // Check URL for share code
 const params=new URLSearchParams(location.search);
 if(params.get('code')){document.getElementById('joinCode').value=params.get('code');joinSetlist();}
+else{loadExistingSetlists();}
+
+async function loadExistingSetlists(){
+  try{
+    const res=await api('setlists?order=created_at.desc');
+    const el=document.getElementById('existingSetlists');
+    if(!res.length){el.innerHTML='';return;}
+    el.innerHTML='<h2 style="text-align:center;margin-bottom:12px">Existing Setlists</h2>'+res.map(s=>`
+      <div class="song-card" style="cursor:pointer" onclick="document.getElementById('joinCode').value='${s.share_code}';joinSetlist()">
+        <div class="song-header">
+          <div><h3>${esc(s.name)}</h3><small>${new Date(s.created_at).toLocaleDateString()}</small></div>
+          <div style="color:var(--accent);font-size:1.3rem">→</div>
+        </div>
+      </div>`).join('');
+  }catch(e){console.error('Failed to load setlists',e);}
+}
 
 async function api(path,opts={}){
   const r=await fetch(SUPABASE_URL+'/rest/v1/'+path,{headers,...opts});
